@@ -85,6 +85,9 @@ canvas.wave{display:block;width:100%;height:92px;margin:14px 0 4px;}
 .go.stop{background:transparent;color:var(--ink);border:1px solid var(--line);}
 .go:focus-visible,.btn:focus-visible{outline:2px solid var(--vagal);outline-offset:3px;}
 .hint{color:var(--muted);font-size:13px;margin-top:12px;}
+.lensRow{display:flex;align-items:center;gap:10px;margin:0 0 12px;font-size:14px;color:var(--muted);}
+.lensRow[hidden]{display:none;}
+.lensRow select{flex:1;font:inherit;font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px;}
 .btn{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:8px 14px;cursor:pointer;}
 
 .panel{border-left:3px solid var(--amber);padding:4px 0 4px 14px;margin:18px 0;font-size:14px;}
@@ -155,6 +158,10 @@ video#cam{position:absolute;width:2px;height:2px;opacity:0;pointer-events:none;l
     <label><input type="radio" name="dur" value="120" checked><span>2分</span></label>
     <label><input type="radio" name="dur" value="180"><span>3分</span></label>
     <label><input type="radio" name="dur" value="300"><span>5分</span></label>
+  </div>
+  <div class="lensRow" id="lensRow" hidden>
+    <label for="lens">使うレンズ</label>
+    <select id="lens"></select>
   </div>
   <button class="go" id="go" type="button">測定を始める</button>
   <p class="hint">座って力を抜き、スマホを机に置くか手で軽く支えます。指は押しつけず、レンズとライトの両方にかかるように。円が明るい赤〜橙に光れば位置は合っています。2分以上でLF/HFなどの周波数指標も出ます。</p>
@@ -528,13 +535,56 @@ async function saveFile(filename, data, type) {
 }
 
 /* ================= camera ================= */
+/* lens choice: physical back lenses only (virtual Dual/Triple cameras auto-switch lenses at close range) */
+const LKEY = 'hikari-myaku.lens';
+const lensSel = $('#lens');
+function lensName(label) {
+  const l = (label || '').trim();
+  if (/ultra wide|超広角/i.test(l)) return '超広角（0.5×）';
+  if (/telephoto|望遠/i.test(l)) return '望遠';
+  if (/^(back camera|背面カメラ)$/i.test(l)) return '広角（1×・標準）';
+  return l || 'カメラ';
+}
+function isPhysicalBack(d) {
+  const l = (d.label || '').trim();
+  if (!l) return false;
+  if (/front|前面|truedepth/i.test(l)) return false;
+  if (/dual|triple|デュアル|トリプル/i.test(l)) return false;
+  return true;
+}
+function getLensPref() { try { return localStorage.getItem(LKEY) || ''; } catch (e) { return ''; } }
+function setLensPref(label) { try { localStorage.setItem(LKEY, label); } catch (e) {} }
+function fillLensSelect(backs, curLabel) {
+  lensSel.innerHTML = '';
+  const order = l => /^(back camera|背面カメラ)$/i.test(l) ? 0 : /ultra wide|超広角/i.test(l) ? 1 : /telephoto|望遠/i.test(l) ? 2 : 3;
+  backs.slice().sort((a, b) => order(a.label.trim()) - order(b.label.trim())).forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.label.trim(); o.textContent = lensName(d.label);
+    if (o.value === curLabel) o.selected = true;
+    lensSel.appendChild(o);
+  });
+  $('#lensRow').hidden = backs.length < 2;
+}
+lensSel.addEventListener('change', async () => {
+  setLensPref(lensSel.value);
+  if (!S.camOn) return;
+  await closeCamera();
+  S.phase = 'finger'; S.samples = []; S.disp = []; S.liveBeats = []; S.liveIbi = []; S.live = null; S.frameTs = []; S.lastTs = -1;
+  setStatus('レンズを切り替えています…');
+  try { await openCamera(); }
+  catch (e) { await abort('レンズを切り替えられませんでした（' + ((e && e.name) || 'unknown') + '）。'); }
+});
+
 async function openCamera() {
   const base = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60, max: 60 } };
   let stream = await navigator.mediaDevices.getUserMedia({ video: { ...base, facingMode: { ideal: 'environment' } }, audio: false });
   try {
     const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
     const cur = stream.getVideoTracks()[0].getSettings().deviceId;
-    const pref = devs.find(d => /^(back camera|背面カメラ)$/i.test((d.label || '').trim()));
+    const backs = devs.filter(isPhysicalBack);
+    const saved = getLensPref();
+    const pref = backs.find(d => d.label.trim() === saved) || devs.find(d => /^(back camera|背面カメラ)$/i.test((d.label || '').trim()));
+    if (backs.length) fillLensSelect(backs, pref ? pref.label.trim() : '');
     if (pref && pref.deviceId && pref.deviceId !== cur) {
       stream.getTracks().forEach(tr => tr.stop());
       stream = await navigator.mediaDevices.getUserMedia({ video: { ...base, deviceId: { exact: pref.deviceId } }, audio: false });
