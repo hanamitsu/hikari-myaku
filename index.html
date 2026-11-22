@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ひかり脈｜指先カメラで心拍とHRV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F6F3F5; --surface:#FFFFFF; --ink:#231B27; --muted:#6C6272; --line:#E3DAE1;
+  --blood:#B5203A; --blood-ink:#FFFFFF; --vagal:#2F5C9C; --amber:#A4661A; --ok:#2C7A57;
+  --disc-idle:#EFE7EC;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#140F17; --surface:#1D1621; --ink:#F1EAF0; --muted:#A79CAB; --line:#30263A;
+    --blood:#E5485F; --blood-ink:#1A0B10; --vagal:#86A9E6; --amber:#E2A94D; --ok:#5CC497;
+    --disc-idle:#241B29;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#140F17; --surface:#1D1621; --ink:#F1EAF0; --muted:#A79CAB; --line:#30263A;
+  --blood:#E5485F; --blood-ink:#1A0B10; --vagal:#86A9E6; --amber:#E2A94D; --ok:#5CC497;
+  --disc-idle:#241B29;
+  color-scheme:dark;
+}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px);}
+*,*::before,*::after{box-sizing:inherit;}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Zen Kaku Gothic New","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
+  font-size:16px;line-height:1.75;-webkit-text-size-adjust:100%;
+}
+main{max-width:560px;margin:0 auto;padding:18px 20px 56px;}
+.num{font-family:"Fraunces","Iowan Old Style","Times New Roman",serif;font-variant-numeric:tabular-nums lining-nums;}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;}
+h1{font-size:22px;font-weight:700;letter-spacing:.04em;margin:0;}
+header p{margin:0;color:var(--muted);font-size:13px;}
+h2{font-size:18px;font-weight:700;margin:40px 0 10px;}
+h3{font-size:15px;font-weight:700;margin:24px 0 6px;}
+p{margin:0 0 12px;}
+a{color:var(--vagal);}
+
+/* ---------- stage ---------- */
+.stage{position:relative;width:min(80vw,330px);aspect-ratio:1/1;margin:22px auto 6px;}
+.stage svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);}
+.stage .track{fill:none;stroke:var(--line);stroke-width:3;}
+.stage .prog{fill:none;stroke:var(--blood);stroke-width:3;stroke-linecap:round;transition:stroke-dashoffset .25s linear;}
+.disc{
+  position:absolute;inset:16px;border-radius:50%;
+  background:var(--disc-idle);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  color:var(--ink);transition:box-shadow .4s ease;
+  padding:0 26px;
+}
+.disc.lit{color:#fff;text-shadow:0 1px 8px rgba(60,0,10,.35);}
+.bpm{font-size:76px;line-height:1;font-weight:400;letter-spacing:-.01em;}
+.bpm small{display:block;font-family:"Zen Kaku Gothic New",system-ui,sans-serif;font-size:13px;letter-spacing:.08em;margin-top:6px;opacity:.85;}
+.status{min-height:3.4em;text-align:center;font-size:15px;margin:10px auto 0;max-width:30em;}
+.status.warn{color:var(--amber);}
+.meta{text-align:center;color:var(--muted);font-size:12px;min-height:1.5em;}
+
+canvas.wave{display:block;width:100%;height:92px;margin:14px 0 4px;}
+
+/* ---------- controls ---------- */
+.dur{display:flex;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:18px 0 12px;}
+.dur label{flex:1;position:relative;}
+.dur input{position:absolute;opacity:0;inset:0;margin:0;}
+.dur span{display:block;text-align:center;padding:10px 0;font-size:15px;color:var(--muted);border-left:1px solid var(--line);}
+.dur label:first-child span{border-left:0;}
+.dur input:checked + span{background:var(--surface);color:var(--ink);font-weight:700;}
+.dur input:focus-visible + span{outline:2px solid var(--vagal);outline-offset:-2px;}
+.go{
+  display:block;width:100%;border:0;border-radius:14px;padding:16px;
+  font:inherit;font-size:17px;font-weight:700;letter-spacing:.06em;
+  background:var(--blood);color:var(--blood-ink);cursor:pointer;
+}
+.go.stop{background:transparent;color:var(--ink);border:1px solid var(--line);}
+.go:focus-visible,.btn:focus-visible{outline:2px solid var(--vagal);outline-offset:3px;}
+.hint{color:var(--muted);font-size:13px;margin-top:12px;}
+.btn{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:8px 14px;cursor:pointer;}
+
+.panel{border-left:3px solid var(--amber);padding:4px 0 4px 14px;margin:18px 0;font-size:14px;}
+.panel p:last-child{margin-bottom:0;}
+
+/* ---------- results ---------- */
+#results[hidden],#errorPanel[hidden]{display:none;}
+.head2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0 14px;}
+.fig{background:var(--surface);border-radius:14px;padding:14px 16px;}
+.fig .v{font-size:44px;line-height:1.05;}
+.fig .v small{font-family:"Zen Kaku Gothic New",system-ui,sans-serif;font-size:13px;color:var(--muted);margin-left:4px;}
+.fig .k{font-size:13px;color:var(--muted);}
+.fig.vagal .v{color:var(--vagal);}
+.read p{font-size:15px;}
+.quality{font-size:13px;color:var(--muted);margin-bottom:6px;}
+.quality b{font-weight:700;}
+.q-good{color:var(--ok);} .q-mid{color:var(--amber);} .q-low{color:var(--blood);}
+dl.metrics{margin:10px 0 0;display:grid;grid-template-columns:auto 1fr;column-gap:16px;row-gap:0;}
+dl.metrics dt{padding:10px 0;border-top:1px solid var(--line);font-size:14px;}
+dl.metrics dt .num{font-size:20px;display:block;line-height:1.2;}
+dl.metrics dd{margin:0;padding:10px 0;border-top:1px solid var(--line);font-size:13px;color:var(--muted);line-height:1.6;}
+canvas.chart{display:block;width:100%;height:170px;margin:6px 0 2px;}
+canvas.chart.square{height:auto;aspect-ratio:1/1;max-width:300px;}
+.cap{font-size:12px;color:var(--muted);margin-bottom:14px;}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+
+table.hist{width:100%;border-collapse:collapse;font-size:14px;}
+table.hist th{font-weight:500;color:var(--muted);text-align:right;padding:6px 4px;font-size:12px;}
+table.hist th:first-child,table.hist td:first-child{text-align:left;}
+table.hist td{text-align:right;padding:8px 4px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums;}
+.empty{color:var(--muted);font-size:14px;}
+
+details{border-top:1px solid var(--line);padding:12px 0;}
+details:last-of-type{border-bottom:1px solid var(--line);}
+summary{cursor:pointer;font-weight:700;font-size:15px;}
+details p,details li{font-size:14px;}
+details ol,details ul{padding-left:1.3em;margin:8px 0;}
+details li{margin-bottom:6px;}
+.disclaimer{font-size:12px;color:var(--muted);margin-top:28px;}
+
+video#cam{position:absolute;width:2px;height:2px;opacity:0;pointer-events:none;left:0;top:0;}
+@media (prefers-reduced-motion: reduce){ .stage .prog{transition:none;} }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>ひかり脈</h1>
+    <p>カメラとライトで心拍・HRV</p>
+  </header>
+
+  <div class="stage" aria-live="off">
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <circle class="track" cx="50" cy="50" r="48"></circle>
+      <circle class="prog" id="prog" cx="50" cy="50" r="48" stroke-dasharray="301.6" stroke-dashoffset="301.6"></circle>
+    </svg>
+    <div class="disc" id="disc">
+      <div class="bpm num" id="bpm">—<small>bpm</small></div>
+    </div>
+  </div>
+  <p class="status" id="status" role="status">背面カメラとライトを、人差し指の腹でそっと覆ってから始めてください。</p>
+  <p class="meta" id="meta"></p>
+
+  <canvas class="wave" id="wave" aria-label="脈波のライブ表示"></canvas>
+
+  <div class="dur" role="radiogroup" aria-label="計測時間">
+    <label><input type="radio" name="dur" value="60"><span>1分</span></label>
+    <label><input type="radio" name="dur" value="120" checked><span>2分</span></label>
+    <label><input type="radio" name="dur" value="180"><span>3分</span></label>
+    <label><input type="radio" name="dur" value="300"><span>5分</span></label>
+  </div>
+  <button class="go" id="go" type="button">測定を始める</button>
+  <p class="hint">座って力を抜き、スマホを机に置くか手で軽く支えます。指は押しつけず、レンズとライトの両方にかかるように。円が明るい赤〜橙に光れば位置は合っています。2分以上でLF/HFなどの周波数指標も出ます。</p>
+
+  <div class="panel" id="errorPanel" hidden>
+    <p id="errorText"></p>
+    <div class="row" id="selfSaveRow" hidden><button class="btn" id="selfSave" type="button">このアプリをHTMLで保存</button></div>
+  </div>
+
+  <section id="results" hidden>
+    <h2>今回の結果</h2>
+    <p class="quality" id="quality"></p>
+    <div class="head2">
+      <div class="fig"><div class="k">平均心拍</div><div class="v num" id="rHR"></div></div>
+      <div class="fig vagal"><div class="k">RMSSD（副交感の目安）</div><div class="v num" id="rRMSSD"></div></div>
+    </div>
+    <div class="read" id="read"></div>
+
+    <h3>拍の間隔（タコグラム）</h3>
+    <canvas class="chart" id="tacho"></canvas>
+    <p class="cap">点は1拍ごとの間隔。白抜きは誤検出として除外した拍です。</p>
+
+    <h3>周波数（Lomb–Scargle）</h3>
+    <canvas class="chart" id="psd"></canvas>
+    <p class="cap" id="psdCap">左の帯がLF（0.04–0.15 Hz）、右の帯がHF（0.15–0.4 Hz、呼吸と連動）。</p>
+
+    <h3>ポアンカレプロット</h3>
+    <canvas class="chart square" id="poin"></canvas>
+    <p class="cap">横軸が今の拍間隔、縦軸が次の拍間隔。斜め線と直交する方向の広がり（SD1）が拍ごとの揺らぎです。</p>
+
+    <h3>詳しい指標</h3>
+    <dl class="metrics" id="metrics"></dl>
+
+    <div class="row">
+      <button class="btn" id="csv" type="button" hidden>拍間隔をCSVで保存</button>
+    </div>
+  </section>
+
+  <h2>これまでの記録</h2>
+  <div id="hist"></div>
+  <div class="row"><button class="btn" id="clearHist" type="button" hidden>記録を消す</button></div>
+
+  <h2>仕組みと根拠</h2>
+  <details>
+    <summary>なぜ指とカメラで脈が取れるのか</summary>
+    <p>ライトで指先を照らすと、光は皮膚の中の血液に一部吸収されてからカメラに届きます。心臓が血液を送り出すたびに指先の血液量がわずかに増え、届く光がほんの少し暗くなります。この明るさの揺れが光電容積脈波（PPG）です。</p>
+    <p>拍と拍の間隔の揺らぎ（HRV）は自律神経、とくに迷走神経（副交感神経）の働きを反映します。指で測るのは厳密には脈拍の揺らぎ（PRV）ですが、安静時は心電図のHRVとよく一致することが複数の研究で示されています。</p>
+  </details>
+  <details>
+    <summary>解析の手順</summary>
+    <ol>
+      <li>カメラ中央部の赤・緑の平均輝度を1フレームごとに記録（iPhoneは広角の背面カメラを指定し、自動レンズ切り替えを避けます）。</li>
+      <li>不等間隔のフレーム時刻を線形補間で等間隔に並べ直し、0.5–4 Hzの4次バターワース帯域通過フィルタを前後方向にかけて位相ずれをなくします。</li>
+      <li>赤と緑のうち、心拍帯域のスペクトルが鋭いほうを自動で採用します（ライト直下では赤が飽和しやすく、緑のほうが脈が明瞭なことが多いため）。</li>
+      <li>Elgendi らの「2つの移動平均」法（TERMA）で拍を検出し、立ち上がりの最大傾き点を放物線補間してミリ秒単位の拍時刻を求めます。</li>
+      <li>300–2000 ms の範囲外、または前後10拍の中央値から20%以上ずれた間隔を誤検出として除外します。</li>
+      <li>時間領域（RMSSD・SDNN・pNN50・SD1/SD2・ストレス指数）と、不等間隔のまま計算できる Lomb–Scargle 法による周波数領域（LF・HF・LF/HF）を算出します。</li>
+    </ol>
+  </details>
+  <details>
+    <summary>結果の読み方と限界</summary>
+    <ul>
+      <li>RMSSD は1分程度の短い計測でも5分計測とよく一致しますが、LF や LF/HF は短いほど不安定です。周波数指標は2分以上、できれば5分で見てください。</li>
+      <li>LF/HF を「交感と副交感のバランス」とみなす解釈は、研究者の間でも異論が多いものです。参考値として扱ってください。</li>
+      <li>HRVは年齢・体格・体調・呼吸で大きく変わり、人と比べる意味はあまりありません。朝起きてすぐ・同じ姿勢など条件をそろえて、自分の値の変化を見るのが基本です。</li>
+      <li>不整脈（期外収縮など）があると拍の除外が増え、値がずれます。</li>
+    </ul>
+  </details>
+  <details>
+    <summary>参考にした論文・データ・オープンソース</summary>
+    <ul>
+      <li>Bánhalmi ら（2018）スマホカメラによるPRVと心電図HRVの比較。<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5832098/" target="_blank" rel="noopener">PMC5832098</a></li>
+      <li>Peng ら（2015）スマホPPGからのHRV抽出。<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4309304/" target="_blank" rel="noopener">PMC4309304</a></li>
+      <li>Light Heart アプリの検証（JMIR Form Res 2024、iPhone X）。<a href="https://formative.jmir.org/2024/1/e56921/PDF" target="_blank" rel="noopener">論文</a></li>
+      <li>レジスタンス運動前後のスマホHRV妥当性（Sensors 2020）。<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7600564/" target="_blank" rel="noopener">PMC7600564</a></li>
+      <li>うつ病患者でのスマホHRV検証 PULSAR（2026）。<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC13687130/" target="_blank" rel="noopener">PMC13687130</a></li>
+      <li>Elgendi ら（2013）PPG収縮期ピーク検出（TERMA）。<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3805543/" target="_blank" rel="noopener">PLOS ONE</a></li>
+      <li>超短時間HRVの妥当性（PLOS ONE 2015）と批判的レビュー（Front. Neurosci. 2020）。<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4586373/" target="_blank" rel="noopener">PMC4586373</a>・<a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC7710683" target="_blank" rel="noopener">PMC7710683</a></li>
+      <li>オープンデータ：BUT PPG（PhysioNet、スマホ指先動画＋心電図）<a href="https://www.physionet.org/content/butppg/2.0.0/136011/" target="_blank" rel="noopener">リンク</a>、MTHS（iPhone指先PPG＋HR/SpO2）<a href="https://arxiv.org/pdf/2204.08989" target="_blank" rel="noopener">論文</a>、M3PD（前後カメラ同時記録）<a href="https://arxiv.org/abs/2511.02349v1" target="_blank" rel="noopener">論文</a></li>
+      <li>オープンソース：NeuroKit2、RapidHRV、Lens HRV（Android）、heart-rate-monitor（Web版の先行例）。<a href="https://github.com/richrd/heart-rate-monitor" target="_blank" rel="noopener">GitHub</a>・<a href="https://f-droid.org/en/packages/com.lenshrv.foss/" target="_blank" rel="noopener">Lens HRV</a></li>
+      <li>iOS Safari のライト（torch）対応：WebKit Bug 243075。<a href="https://bugs.webkit.org/show_bug.cgi?id=243075" target="_blank" rel="noopener">リンク</a></li>
+    </ul>
+  </details>
+  <p class="disclaimer">医療機器ではありません。体調の判断や診断には使わず、気になる症状があれば医療機関に相談してください。計測データはこの端末のブラウザ内だけで処理・保存され、外部には送られません。</p>
+
+  <video id="cam" playsinline muted autoplay></video>
+</main>
+
+<script>
+(() => {
+'use strict';
+const SELF_HTML = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+/* ================= helpers ================= */
+const $ = s => document.querySelector(s);
+const mean = a => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i]; return a.length ? s / a.length : 0; };
+const sd = a => { if (a.length < 2) return 0; const m = mean(a); let s = 0; for (let i = 0; i < a.length; i++) s += (a[i] - m) ** 2; return Math.sqrt(s / (a.length - 1)); };
+const median = a => { if (!a.length) return 0; const b = Array.from(a).sort((x, y) => x - y); const h = b.length >> 1; return b.length % 2 ? b[h] : (b[h - 1] + b[h]) / 2; };
+const f0 = v => (v == null || !isFinite(v)) ? '—' : Math.round(v).toString();
+const f1 = v => (v == null || !isFinite(v)) ? '—' : v.toFixed(1);
+const f2 = v => (v == null || !isFinite(v)) ? '—' : v.toFixed(2);
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/* ================= DSP ================= */
+function biquad(type, fc, fs, Q) {
+  const w = 2 * Math.PI * fc / fs, c = Math.cos(w), s = Math.sin(w), a = s / (2 * Q);
+  let b0, b1, b2;
+  if (type === 'lp') { b0 = (1 - c) / 2; b1 = 1 - c; b2 = (1 - c) / 2; }
+  else { b0 = (1 + c) / 2; b1 = -(1 + c); b2 = (1 + c) / 2; }
+  const a0 = 1 + a;
+  return { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: (-2 * c) / a0, a2: (1 - a) / a0 };
+}
+// 4th-order Butterworth HP + 4th-order Butterworth LP
+function bandpass(fs, lo, hi) {
+  return [biquad('hp', lo, fs, 0.5412), biquad('hp', lo, fs, 1.3066), biquad('lp', hi, fs, 0.5412), biquad('lp', hi, fs, 1.3066)];
+}
+function runBiquad(x, c) {
+  const n = x.length, y = new Float64Array(n);
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < n; i++) {
+    const xi = x[i];
+    const yi = c.b0 * xi + c.b1 * x1 + c.b2 * x2 - c.a1 * y1 - c.a2 * y2;
+    x2 = x1; x1 = xi; y2 = y1; y1 = yi; y[i] = yi;
+  }
+  return y;
+}
+function cascade(x, cs) { let y = x; for (const c of cs) y = runBiquad(y, c); return y; }
+function filtfilt(x, cs, pad) {
+  const n = x.length; pad = Math.max(1, Math.min(pad, n - 1));
+  const ext = new Float64Array(n + 2 * pad);
+  for (let k = 1; k <= pad; k++) ext[pad - k] = 2 * x[0] - x[k];
+  for (let i = 0; i < n; i++) ext[pad + i] = x[i];
+  for (let k = 1; k <= pad; k++) ext[pad + n - 1 + k] = 2 * x[n - 1] - x[n - 1 - k];
+  const off = ext[0];
+  for (let i = 0; i < ext.length; i++) ext[i] -= off;
+  let y = cascade(ext, cs).reverse();
+  const off2 = y[0];
+  for (let i = 0; i < y.length; i++) y[i] -= off2;
+  y = cascade(y, cs).reverse();
+  return y.slice(pad, pad + n);
+}
+function resample(t, x, fs) {
+  const t0 = t[0], t1 = t[t.length - 1];
+  const n = Math.floor((t1 - t0) / 1000 * fs) + 1;
+  const out = new Float64Array(n);
+  let j = 0;
+  for (let i = 0; i < n; i++) {
+    const ti = t0 + i * 1000 / fs;
+    while (j < t.length - 2 && t[j + 1] < ti) j++;
+    const span = t[j + 1] - t[j] || 1;
+    const f = Math.min(Math.max((ti - t[j]) / span, 0), 1);
+    out[i] = x[j] + (x[j + 1] - x[j]) * f;
+  }
+  return { x: out, t0, fs };
+}
+// fraction of 0.5–4 Hz power concentrated at the dominant cardiac peak and its harmonic
+function spectralSNR(x, fs) {
+  const n = x.length;
+  if (n < fs * 3) return { snr: 0, f: 0 };
+  const m = mean(x);
+  const freqs = [], pw = [];
+  let total = 0, best = -1, bi = 0;
+  for (let f = 0.5; f <= 4.0001; f += 0.02) {
+    const w = 2 * Math.PI * f / fs;
+    const cw = Math.cos(w), sw = Math.sin(w);
+    let c = 1, s = 0, re = 0, im = 0;
+    for (let i = 0; i < n; i++) {
+      const v = x[i] - m; re += v * c; im -= v * s;
+      const nc = c * cw - s * sw; s = s * cw + c * sw; c = nc;
+    }
+    const p = re * re + im * im;
+    freqs.push(f); pw.push(p); total += p;
+    if (f >= 0.7 && f <= 3.5 && p > best) { best = p; bi = freqs.length - 1; }
+  }
+  const fd = freqs[bi];
+  let sig = 0;
+  for (let k = 0; k < freqs.length; k++) {
+    const f = freqs[k];
+    if (Math.abs(f - fd) <= 0.1 || Math.abs(f - 2 * fd) <= 0.1) sig += pw[k];
+  }
+  return { snr: total ? sig / total : 0, f: fd };
+}
+function movingAvg(y, w) {
+  const n = y.length, o = new Float64Array(n), h = Math.floor(w / 2);
+  const ps = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) ps[i + 1] = ps[i] + y[i];
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - h), b = Math.min(n - 1, i + h);
+    o[i] = (ps[b + 1] - ps[a]) / (b - a + 1);
+  }
+  return o;
+}
+// Elgendi et al. 2013 (TERMA): W1=111 ms, W2=667 ms, beta=0.02
+function elgendiPeaks(s, fs) {
+  const n = s.length, y = new Float64Array(n);
+  let sum = 0;
+  for (let i = 0; i < n; i++) { const v = s[i] > 0 ? s[i] : 0; y[i] = v * v; sum += y[i]; }
+  const thr = 0.02 * (sum / n);
+  const w1 = Math.max(1, Math.round(0.111 * fs)), w2 = Math.max(3, Math.round(0.667 * fs));
+  const ma1 = movingAvg(y, w1), ma2 = movingAvg(y, w2);
+  const cand = [];
+  let i = 0;
+  while (i < n) {
+    if (ma1[i] > ma2[i] + thr) {
+      let j = i;
+      while (j < n && ma1[j] > ma2[j] + thr) j++;
+      if (j - i >= w1) {
+        let pk = i;
+        for (let k = i; k < j; k++) if (s[k] > s[pk]) pk = k;
+        cand.push(pk);
+      }
+      i = j;
+    } else i++;
+  }
+  const minD = Math.round(0.3 * fs), out = [];
+  for (const p of cand) {
+    if (out.length && p - out[out.length - 1] < minD) {
+      if (s[p] > s[out[out.length - 1]]) out[out.length - 1] = p;
+    } else out.push(p);
+  }
+  return out;
+}
+// fiducial = point of maximum upslope before each systolic peak, refined by parabolic interpolation
+function fiducials(s, peaks, fs) {
+  const n = s.length, out = [];
+  for (const p of peaks) {
+    const lo = Math.max(2, p - Math.round(0.3 * fs));
+    let bm = -Infinity, bk = -1;
+    for (let k = lo; k <= p && k < n - 2; k++) {
+      const d = s[k + 1] - s[k - 1];
+      if (d > bm) { bm = d; bk = k; }
+    }
+    let idx = p;
+    if (bk >= 2 && bk <= n - 3) {
+      const a = s[bk] - s[bk - 2], b = s[bk + 1] - s[bk - 1], c = s[bk + 2] - s[bk];
+      const den = a - 2 * b + c;
+      const d = den !== 0 ? 0.5 * (a - c) / den : 0;
+      idx = bk + (Math.abs(d) < 1 ? d : 0);
+    }
+    out.push(idx);
+  }
+  return out;
+}
+function correctBeats(times) {
+  const raw = [];
+  for (let i = 1; i < times.length; i++) raw.push({ t: times[i], ibi: times[i] - times[i - 1], ok: true });
+  const inRange = raw.map(r => r.ibi >= 300 && r.ibi <= 2000);
+  for (let i = 0; i < raw.length; i++) {
+    if (!inRange[i]) { raw[i].ok = false; continue; }
+    const nb = [];
+    for (let j = Math.max(0, i - 5); j <= Math.min(raw.length - 1, i + 5); j++) if (j !== i && inRange[j]) nb.push(raw[j].ibi);
+    if (nb.length >= 3) {
+      const md = median(nb);
+      if (Math.abs(raw[i].ibi - md) > 0.2 * md) raw[i].ok = false;
+    }
+  }
+  return raw;
+}
+function lomb(t, x, freqs) {
+  const n = t.length, P = new Float64Array(freqs.length);
+  for (let k = 0; k < freqs.length; k++) {
+    const w = 2 * Math.PI * freqs[k];
+    let s2 = 0, c2 = 0;
+    for (let i = 0; i < n; i++) { s2 += Math.sin(2 * w * t[i]); c2 += Math.cos(2 * w * t[i]); }
+    const tau = Math.atan2(s2, c2) / (2 * w);
+    let xc = 0, xs = 0, cc = 0, ss = 0;
+    for (let i = 0; i < n; i++) {
+      const a = w * (t[i] - tau), c = Math.cos(a), s = Math.sin(a);
+      xc += x[i] * c; xs += x[i] * s; cc += c * c; ss += s * s;
+    }
+    P[k] = 0.5 * ((cc ? xc * xc / cc : 0) + (ss ? xs * xs / ss : 0));
+  }
+  return P;
+}
+function computeHRV(beats, durSec) {
+  const ok = beats.filter(b => b.ok);
+  const nn = ok.map(b => b.ibi);
+  const res = { nBeats: beats.length, nOk: ok.length };
+  if (nn.length < 10) return res;
+  res.meanNN = mean(nn);
+  res.hr = 60000 / res.meanNN;
+  res.sdnn = sd(nn);
+  const d = [];
+  for (let i = 1; i < beats.length; i++) if (beats[i].ok && beats[i - 1].ok) d.push(beats[i].ibi - beats[i - 1].ibi);
+  if (d.length >= 5) {
+    res.rmssd = Math.sqrt(mean(d.map(v => v * v)));
+    res.lnrmssd = Math.log(res.rmssd);
+    res.pnn50 = d.filter(v => Math.abs(v) > 50).length / d.length * 100;
+    const sdsd = sd(d);
+    res.sd1 = sdsd / Math.SQRT2;
+    res.sd2 = Math.sqrt(Math.max(0, 2 * res.sdnn ** 2 - 0.5 * sdsd ** 2));
+  }
+  // Baevsky stress index (Kubios convention: square root)
+  const bins = new Map();
+  for (const v of nn) { const b = Math.floor(v / 50); bins.set(b, (bins.get(b) || 0) + 1); }
+  let mb = 0, mc = -1;
+  for (const [b, c] of bins) if (c > mc) { mc = c; mb = b; }
+  const Mo = (mb + 0.5) * 50 / 1000, AMo = mc / nn.length * 100;
+  const MxDMn = (Math.max(...nn) - Math.min(...nn)) / 1000;
+  if (MxDMn > 0) res.si = Math.sqrt(AMo / (2 * Mo * MxDMn));
+  // frequency domain
+  if (durSec >= 50 && ok.length >= 30) {
+    const t = ok.map(b => b.t / 1000), x = nn.map(v => v - res.meanNN);
+    const freqs = [];
+    for (let f = 0.005; f <= 0.5; f += 0.0025) freqs.push(f);
+    const P = lomb(t, x, freqs);
+    const scale = 2 * (res.meanNN / 1000);
+    const psd = Array.from(P, p => p * scale);
+    const df = 0.0025;
+    let lf = 0, hf = 0, hfMax = 0, hfF = 0;
+    for (let k = 0; k < freqs.length; k++) {
+      const f = freqs[k];
+      if (f >= 0.04 && f < 0.15) lf += psd[k] * df;
+      if (f >= 0.15 && f < 0.4) { hf += psd[k] * df; if (psd[k] > hfMax) { hfMax = psd[k]; hfF = f; } }
+    }
+    res.psd = { freqs, psd };
+    res.hf = hf;
+    res.respRate = hfF * 60;
+    if (durSec >= 110) {
+      res.lf = lf; res.lfhf = hf > 0 ? lf / hf : null;
+      res.lfnu = lf + hf > 0 ? lf / (lf + hf) * 100 : null;
+    }
+  }
+  return res;
+}
+function analyze(samples, durSec) {
+  const t = samples.map(s => s.t);
+  const fsRaw = (samples.length - 1) / ((t[t.length - 1] - t[0]) / 1000);
+  const fs = Math.min(60, Math.max(20, Math.round(fsRaw)));
+  const R = resample(t, samples.map(s => s.r), fs);
+  const G = resample(t, samples.map(s => s.g), fs);
+  const cs = bandpass(fs, 0.5, 4.0);
+  const prep = arr => { const m = mean(arr) || 1; const z = new Float64Array(arr.length); for (let i = 0; i < arr.length; i++) z[i] = -(arr[i] / m - 1); return filtfilt(z, cs, Math.round(2 * fs)); };
+  const fr = prep(R.x), fg = prep(G.x);
+  const win = Math.min(fr.length, Math.round(60 * fs));
+  const sr = spectralSNR(fr.subarray(0, win), fs), sg = spectralSNR(fg.subarray(0, win), fs);
+  const meanR = mean(samples.map(s => s.r));
+  let useG = sg.snr > sr.snr;
+  if (meanR > 248) useG = true;
+  const s = useG ? fg : fr;
+  const pk = elgendiPeaks(s, fs);
+  const idx = fiducials(s, pk, fs);
+  const times = idx.map(i => R.t0 + i * 1000 / fs).filter(tt => tt > R.t0 + 1000);
+  const rel = times.map(tt => tt - times[0]);
+  const beats = correctBeats(rel);
+  const metrics = computeHRV(beats, durSec);
+  return { fs, fsRaw, channel: useG ? '緑' : '赤', snr: useG ? sg.snr : sr.snr, beats, metrics, durSec };
+}
+
+/* ================= state ================= */
+const video = $('#cam');
+const grab = document.createElement('canvas');
+grab.width = 48; grab.height = 36;
+const gctx = grab.getContext('2d', { willReadFrequently: true });
+const S = {
+  stream: null, track: null, camOn: false,
+  phase: 'idle', dur: 120, samples: [], settleStart: 0, recStart: 0, lostSince: 0,
+  lastTs: -1, lastPresented: -1, lastVT: -1, frameTs: [], fps: 30,
+  live: null, disp: [], liveBeats: [], liveIbi: [], useG: false, lastPick: 0,
+  smooth: null, wakeLock: null, lastResult: null
+};
+let downloads = null;
+const standalone = !(window.claude && typeof window.claude.use === 'function');
+const canSave = () => !!downloads || standalone;
+async function saveFile(filename, data, type) {
+  if (downloads) return downloads.save({ filename, data });
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* ================= camera ================= */
+async function openCamera() {
+  const base = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60, max: 60 } };
+  let stream = await navigator.mediaDevices.getUserMedia({ video: { ...base, facingMode: { ideal: 'environment' } }, audio: false });
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    const cur = stream.getVideoTracks()[0].getSettings().deviceId;
+    const pref = devs.find(d => /^(back camera|背面カメラ)$/i.test((d.label || '').trim()));
+    if (pref && pref.deviceId && pref.deviceId !== cur) {
+      stream.getTracks().forEach(tr => tr.stop());
+      stream = await navigator.mediaDevices.getUserMedia({ video: { ...base, deviceId: { exact: pref.deviceId } }, audio: false });
+    }
+  } catch (e) { /* keep default camera */ }
+  S.stream = stream;
+  S.track = stream.getVideoTracks()[0];
+  video.srcObject = stream;
+  await video.play().catch(() => {});
+  S.camOn = true;
+  await setTorch(true);
+  setTimeout(() => { if (S.camOn) setTorch(true); }, 600);
+  scheduleFrame();
+}
+async function setTorch(on) {
+  if (!S.track) return false;
+  try { await S.track.applyConstraints({ advanced: [{ torch: on }] }); return true; }
+  catch (e) { try { await S.track.applyConstraints({ torch: on }); return true; } catch (e2) { return false; } }
+}
+async function closeCamera() {
+  S.camOn = false;
+  if (S.track) { try { await setTorch(false); } catch (e) {} }
+  if (S.stream) S.stream.getTracks().forEach(tr => tr.stop());
+  S.stream = null; S.track = null;
+  video.srcObject = null;
+}
+function scheduleFrame() {
+  if (!S.camOn) return;
+  if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(onFrame);
+  else requestAnimationFrame(now => onFrame(now, null));
+}
+
+/* ================= live filters ================= */
+function makeLive(fs) {
+  const mk = () => {
+    const cs = bandpass(fs, 0.5, 4.0), st = cs.map(() => ({ x1: 0, x2: 0, y1: 0, y2: 0 }));
+    let dc = null;
+    return v => {
+      dc = dc == null ? v : dc * 0.99 + v * 0.01;
+      let x = -(v / (dc || 1) - 1);
+      for (let k = 0; k < cs.length; k++) {
+        const c = cs[k], s = st[k];
+        const y = c.b0 * x + c.b1 * s.x1 + c.b2 * s.x2 - c.a1 * s.y1 - c.a2 * s.y2;
+        s.x2 = s.x1; s.x1 = x; s.y2 = s.y1; s.y1 = y; x = y;
+      }
+      return x;
+    };
+  };
+  return { fs, r: mk(), g: mk(), n: 0 };
+}
+
+/* ================= frame loop ================= */
+function onFrame(now, meta) {
+  if (!S.camOn) return;
+  let ts = now;
+  if (meta) {
+    if (meta.presentedFrames === S.lastPresented) { scheduleFrame(); return; }
+    S.lastPresented = meta.presentedFrames;
+    if (typeof meta.mediaTime === 'number' && meta.mediaTime > 0) ts = meta.mediaTime * 1000;
+  } else {
+    if (video.currentTime === S.lastVT) { scheduleFrame(); return; }
+    S.lastVT = video.currentTime;
+  }
+  if (ts <= S.lastTs) ts = S.lastTs + 1;
+  S.lastTs = ts;
+
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) { scheduleFrame(); return; }
+  const cw = vw * 0.5, ch = vh * 0.5;
+  gctx.drawImage(video, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, grab.width, grab.height);
+  const px = gctx.getImageData(0, 0, grab.width, grab.height).data;
+  let r = 0, g = 0, b = 0;
+  const np = px.length / 4;
+  for (let i = 0; i < px.length; i += 4) { r += px[i]; g += px[i + 1]; b += px[i + 2]; }
+  r /= np; g /= np; b /= np;
+
+  // fps
+  S.frameTs.push(ts); if (S.frameTs.length > 90) S.frameTs.shift();
+  if (S.frameTs.length > 20) S.fps = (S.frameTs.length - 1) / ((S.frameTs[S.frameTs.length - 1] - S.frameTs[0]) / 1000);
+  if (!S.live || (S.live.n === 60 && Math.abs(S.live.fs - S.fps) > 4)) { const keepN = S.live ? S.live.n : 0; S.live = makeLive(Math.max(15, Math.min(60, Math.round(S.fps)))); S.live.n = keepN; }
+  S.live.n++;
+
+  const finger = r > 110 && r > g * 1.45 && r > b * 1.45;
+  const dark = !finger && r > 25 && r > g * 1.45 && r > b * 1.45;
+  updateDisc(r, g, b, finger);
+
+  // live signal
+  const lr = S.live.r(r), lg = S.live.g(g);
+  S.disp.push({ t: ts, r: lr, g: lg, on: finger });
+  while (S.disp.length && ts - S.disp[0].t > 8000) S.disp.shift();
+  if (finger && ts - S.lastPick > 3000 && S.disp.length > S.fps * 5) {
+    S.lastPick = ts;
+    const sr = spectralSNR(S.disp.map(d => d.r), S.fps), sg = spectralSNR(S.disp.map(d => d.g), S.fps);
+    S.useG = r > 248 ? true : sg.snr > sr.snr;
+  }
+  liveBeat(ts, finger);
+  drawWave(ts);
+
+  // state machine
+  if (S.phase === 'finger') {
+    setStatus(dark ? '暗すぎます。ライトまで指がかかっているか確認してください。' : '背面カメラとライトに指を乗せてください。', dark);
+    if (finger) { S.phase = 'settle'; S.settleStart = ts; }
+  } else if (S.phase === 'settle') {
+    if (!finger) { S.phase = 'finger'; }
+    else {
+      const left = Math.ceil((3000 - (ts - S.settleStart)) / 1000);
+      setStatus(`信号が落ち着くのを待っています（${Math.max(left, 0)}秒）。そのまま動かさずに。`);
+      if (ts - S.settleStart >= 3000) { S.phase = 'record'; S.recStart = ts; S.samples = []; S.lostSince = 0; }
+    }
+  } else if (S.phase === 'record') {
+    if (finger) {
+      S.lostSince = 0;
+      S.samples.push({ t: ts, r, g });
+      setStatus('計測中。力を抜いて、普段どおりに呼吸してください。');
+    } else {
+      if (!S.lostSince) S.lostSince = ts;
+      setStatus('指がずれています。元の位置に戻してください。', true);
+      if (ts - S.lostSince > 2000) { abort('指が2秒以上離れたため中止しました。もう一度お試しください。'); return; }
+    }
+    const el = ts - S.recStart;
+    setProgress(el / (S.dur * 1000));
+    if (el >= S.dur * 1000) { finish(); return; }
+  }
+  $('#meta').textContent = `${Math.round(S.fps)} fps・${S.useG ? '緑' : '赤'}チャンネル` + (S.phase === 'record' ? `・残り${Math.max(0, Math.ceil(S.dur - (ts - S.recStart) / 1000))}秒` : '');
+  scheduleFrame();
+}
+
+function liveBeat(ts, finger) {
+  const D = S.disp, n = D.length, half = Math.max(3, Math.round(S.fps * 0.22));
+  if (!finger || n < half * 2 + 3) return;
+  const key = S.useG ? 'g' : 'r';
+  const i = n - 1 - half;
+  const v = D[i][key];
+  if (v <= 0) return;
+  for (let k = i - half; k <= i + half; k++) if (k !== i && D[k][key] >= v) return;
+  let amp = 0;
+  for (let k = Math.max(0, n - Math.round(S.fps * 3)); k < n; k++) amp = Math.max(amp, Math.abs(D[k][key]));
+  if (v < 0.35 * amp) return;
+  const a = D[i - 1][key], c = D[i + 1][key], den = a - 2 * v + c;
+  const d = den !== 0 ? 0.5 * (a - c) / den : 0;
+  const tp = D[i].t + (Math.abs(d) < 1 ? d : 0) * (D[i + 1].t - D[i - 1].t) / 2;
+  const last = S.liveBeats[S.liveBeats.length - 1];
+  if (last && tp - last < 300) return;
+  if (last) {
+    const ibi = tp - last;
+    if (ibi <= 2000) { S.liveIbi.push(ibi); if (S.liveIbi.length > 10) S.liveIbi.shift(); }
+  }
+  S.liveBeats.push(tp);
+  if (S.liveBeats.length > 30) S.liveBeats.shift();
+  if (S.liveIbi.length >= 4) setBPM(60000 / median(S.liveIbi));
+  pulseDisc();
+}
+
+/* ================= UI ================= */
+const disc = $('#disc'), bpmEl = $('#bpm'), statusEl = $('#status'), progEl = $('#prog'), goBtn = $('#go');
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+function updateDisc(r, g, b, finger) {
+  if (!finger) {
+    S.smooth = null;
+    disc.classList.remove('lit');
+    disc.style.background = '';
+    disc.style.boxShadow = '';
+    return;
+  }
+  const s = S.smooth = S.smooth ? S.smooth.map((v, k) => v * 0.8 + [r, g, b][k] * 0.2) : [r, g, b];
+  const c = `rgb(${s[0] | 0},${s[1] | 0},${s[2] | 0})`;
+  const hi = `rgb(${Math.min(255, s[0] * 1.08) | 0},${Math.min(255, s[1] * 1.35 + 20) | 0},${Math.min(255, s[2] * 1.3 + 15) | 0})`;
+  disc.classList.add('lit');
+  disc.style.background = `radial-gradient(circle at 50% 38%, ${hi} 0%, ${c} 62%, rgb(${s[0] * 0.72 | 0},${s[1] * 0.6 | 0},${s[2] * 0.6 | 0}) 100%)`;
+  disc.style.boxShadow = `0 0 70px -6px rgba(${s[0] | 0},${s[1] | 0},${s[2] | 0},.55)`;
+}
+function pulseDisc() {
+  if (reduceMotion.matches || !disc.animate) return;
+  disc.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.03)' }, { transform: 'scale(1)' }], { duration: 240, easing: 'ease-out' });
+}
+function setBPM(v) { bpmEl.firstChild.nodeValue = v ? Math.round(v).toString() : '—'; }
+let lastStatus = '';
+function setStatus(text, warn) {
+  if (text === lastStatus) return;
+  lastStatus = text;
+  statusEl.textContent = text;
+  statusEl.classList.toggle('warn', !!warn);
+}
+function setProgress(p) {
+  const L = 301.6;
+  progEl.setAttribute('stroke-dashoffset', (L * (1 - Math.max(0, Math.min(1, p)))).toFixed(1));
+}
+function showError(text, offerSave) {
+  $('#errorText').textContent = text;
+  $('#errorPanel').hidden = false;
+  $('#selfSaveRow').hidden = !(offerSave && downloads);
+}
+
+function setupCanvas(cv) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+const waveCv = $('#wave');
+function drawWave(ts) {
+  const { ctx, w, h } = setupCanvas(waveCv);
+  const D = S.disp, key = S.useG ? 'g' : 'r', span = 6000, t0 = ts - span;
+  const pts = D.filter(d => d.t >= t0);
+  ctx.strokeStyle = cssVar('--line'); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
+  if (pts.length < 3) return;
+  let amp = 1e-9;
+  for (const p of pts) if (p.on) amp = Math.max(amp, Math.abs(p[key]));
+  ctx.strokeStyle = cssVar('--blood'); ctx.lineWidth = 2; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  let started = false;
+  for (const p of pts) {
+    const x = (p.t - t0) / span * w, y = h / 2 - (p.on ? p[key] / amp : 0) * (h * 0.42);
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.fillStyle = cssVar('--muted');
+  for (const bt of S.liveBeats) if (bt >= t0) { const x = (bt - t0) / span * w; ctx.fillRect(x - 0.5, h - 8, 1, 8); }
+}
+
+/* ================= flow ================= */
+async function start() {
+  $('#errorPanel').hidden = true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showError('このブラウザではカメラが使えません。iPhoneなら Safari（iOS 17.4以降）で開いてください。', true);
+    return;
+  }
+  S.dur = +document.querySelector('input[name="dur"]:checked').value;
+  S.phase = 'finger'; S.samples = []; S.disp = []; S.liveBeats = []; S.liveIbi = []; S.live = null; S.frameTs = []; S.lastTs = -1;
+  setBPM(null); setProgress(0);
+  goBtn.textContent = '中止'; goBtn.classList.add('stop');
+  setStatus('カメラを起動しています…');
+  try {
+    await openCamera();
+  } catch (e) {
+    S.phase = 'idle';
+    goBtn.textContent = '測定を始める'; goBtn.classList.remove('stop');
+    setStatus('カメラを起動できませんでした。');
+    const name = e && e.name;
+    let framed = false; try { framed = window.self !== window.top; } catch (x) { framed = true; }
+    if ((name === 'NotAllowedError' || name === 'SecurityError') && framed) {
+      showError('（' + name + '）このページは別のサイトの中に埋め込まれて表示されていて、埋め込み元がカメラを許可していないため、ブラウザのサイト別設定では解除できません。HTMLを保存して自分のHTTPSサーバー（GitHub Pages など）に置き、Safariで直接開いてください。', true);
+    } else if (name === 'NotAllowedError' || name === 'SecurityError') {
+      showError('（' + name + '）カメラが拒否されています。Safariならアドレスバー左の「ぁあ」→「Webサイトの設定」→「カメラ」を「許可」に。全体の設定は「設定」→「アプリ」→「Safari」→「カメラ」です。変更後にページを再読み込みしてください。', true);
+    } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+      showError('背面カメラが見つかりませんでした。', false);
+    } else {
+      showError('カメラを起動できませんでした（' + (name || 'unknown') + '）。ほかのアプリがカメラを使っていないか確認してください。', true);
+    }
+    return;
+  }
+  try { if (navigator.wakeLock) S.wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+async function stopAll() {
+  await closeCamera();
+  try { if (S.wakeLock) await S.wakeLock.release(); } catch (e) {}
+  S.wakeLock = null;
+  goBtn.textContent = '測定を始める'; goBtn.classList.remove('stop');
+  updateDisc(0, 0, 0, false);
+}
+async function abort(msg) {
+  S.phase = 'idle';
+  await stopAll();
+  setProgress(0); setBPM(null);
+  setStatus(msg || '中止しました。', !!msg);
+  $('#meta').textContent = '';
+}
+async function finish() {
+  S.phase = 'analyzing';
+  const samples = S.samples.slice(), dur = S.dur;
+  await stopAll();
+  setStatus('解析しています…');
+  setTimeout(() => {
+    let res;
+    try { res = analyze(samples, dur); } catch (e) { res = null; }
+    S.phase = 'idle';
+    if (!res || !res.metrics.rmssd) {
+      setProgress(0);
+      setStatus('十分な拍を検出できませんでした。指の力を少し緩め、動かさずにもう一度お試しください。', true);
+      return;
+    }
+    S.lastResult = res;
+    setBPM(res.metrics.hr);
+    setStatus('計測が終わりました。結果は下にあります。');
+    $('#meta').textContent = '';
+    renderResults(res);
+    saveHistory(res);
+    renderHistory();
+  }, 40);
+}
+goBtn.addEventListener('click', () => {
+  if (S.phase === 'idle') start();
+  else if (S.phase !== 'analyzing') abort();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && S.camOn) abort('画面が切り替わったため中止しました。');
+});
+
+/* ================= results ================= */
+function quality(res) {
+  const ratio = res.metrics.nOk / Math.max(1, res.metrics.nBeats);
+  if (ratio >= 0.9 && res.snr >= 0.35) return { label: '良好', cls: 'q-good', ok: true, ratio };
+  if (ratio >= 0.75) return { label: 'まずまず', cls: 'q-mid', ok: true, ratio };
+  return { label: '低い（参考値）', cls: 'q-low', ok: false, ratio };
+}
+function renderResults(res) {
+  const m = res.metrics, q = quality(res);
+  $('#results').hidden = false;
+  $('#quality').innerHTML = `信号の質：<b class="${q.cls}">${q.label}</b>　拍の${Math.round(q.ratio * 100)}%を採用（${m.nOk}/${m.nBeats}拍）、${Math.round(res.fsRaw)} fps、${res.channel}チャンネル`;
+  $('#rHR').innerHTML = `${f0(m.hr)}<small>bpm</small>`;
+  $('#rRMSSD').innerHTML = `${f0(m.rmssd)}<small>ms</small>`;
+
+  const hist = loadHistory().filter(h => h.qok && h.lnrmssd != null).slice(-14);
+  const paras = [];
+  if (hist.length >= 3) {
+    const lns = hist.map(h => h.lnrmssd), mu = mean(lns), s = sd(lns) || 0.1;
+    const muMs = Math.exp(mu);
+    if (m.lnrmssd > mu + s) paras.push(`RMSSD は、これまでの記録（平均およそ${f0(muMs)} ms）より高めです。副交感神経の働きが普段より強く、回復・リラックス寄りの状態と読めます。`);
+    else if (m.lnrmssd < mu - s) paras.push(`RMSSD は、これまでの記録（平均およそ${f0(muMs)} ms）より低めです。疲労、睡眠不足、緊張、飲酒、体調の崩れなどで下がることがあります。一度だけで判断せず、同じ条件で続けて見てください。`);
+    else paras.push(`RMSSD は、これまでの記録（平均およそ${f0(muMs)} ms）の普段の範囲内です。`);
+  } else {
+    paras.push('同じ時間帯・同じ姿勢で3回以上測ると、あなた自身の普段の値と比べた見立てが出ます。HRVは個人差が大きいため、人と比べるより自分の変化を見るのが基本です。');
+  }
+  paras.push(`参考までに、健康な成人の5分安静計測では RMSSD は平均40 ms前後（おおよそ20〜75 ms）に分布すると報告されていますが、年齢とともに下がる傾向があります。`);
+  if (!q.ok) paras.push('今回は除外した拍が多く、数値の信頼度は低めです。指を少し軽く当て、腕をどこかに乗せて動かないようにすると改善します。');
+  $('#read').innerHTML = paras.map(p => `<p>${p}</p>`).join('');
+
+  const rows = [
+    ['SDNN', f0(m.sdnn), 'ms', '拍間隔全体のばらつき。短時間では呼吸と副交感の影響が中心です。'],
+    ['lnRMSSD', f2(m.lnrmssd), '', 'RMSSD の自然対数。日々の比較やアスリートの体調管理でよく使われます。'],
+    ['pNN50', f1(m.pnn50), '%', '隣り合う拍の差が50 msを超えた割合。副交感の目安の一つ。'],
+    ['SD1 / SD2', `${f0(m.sd1)} / ${f0(m.sd2)}`, 'ms', 'ポアンカレプロットの短軸と長軸。SD1 は RMSSD とほぼ同じ情報です。'],
+    ['ストレス指数', f1(m.si), '', 'Baevsky の指標（平方根表示）。拍間隔が狭い範囲に集中するほど高く、交感神経優位の目安とされます。'],
+    ['HF', m.hf != null ? f0(m.hf) : '—', 'ms²', '呼吸に連動した揺らぎ（0.15–0.4 Hz）の強さ。主に副交感神経を反映します。'],
+    ['LF', m.lf != null ? f0(m.lf) : '—', 'ms²', '0.04–0.15 Hz の揺らぎ。血圧調節（圧受容器反射）を反映し、交感・副交感の両方が関わります。' + (m.lf == null ? '2分以上の計測で表示します。' : '')],
+    ['LF/HF', m.lfhf != null ? f2(m.lfhf) : '—', '', '「交感と副交感のバランス」として広く使われますが、この解釈には研究者の間で異論があります。参考値です。'],
+    ['推定呼吸数', m.respRate ? f0(m.respRate) : '—', '回/分', 'HF帯で最も強い周波数から推定。ゆっくりした呼吸（毎分9回未満）ではLF帯に移るため正しく出ません。']
+  ];
+  $('#metrics').innerHTML = rows.map(r => `<dt>${r[0]}<span class="num">${r[1]}${r[2] ? ' <small style="font-size:12px">' + r[2] + '</small>' : ''}</span></dt><dd>${r[3]}</dd>`).join('');
+
+  $('#psdCap').textContent = m.psd
+    ? (m.lf == null ? '計測が2分未満のため LF は算出していません。右の帯がHF（0.15–0.4 Hz、呼吸と連動）。' : '左の帯がLF（0.04–0.15 Hz）、右の帯がHF（0.15–0.4 Hz、呼吸と連動）。')
+    : '周波数解析には1分以上の安定した記録が必要です。';
+  requestAnimationFrame(() => { drawTacho(res); drawPSD(res); drawPoin(res); });
+  $('#csv').hidden = !canSave();
+}
+function axes(ctx, w, h, pad, xLabel, yLabel) {
+  ctx.strokeStyle = cssVar('--line'); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, h - pad.b); ctx.lineTo(w - pad.r, h - pad.b); ctx.stroke();
+  ctx.fillStyle = cssVar('--muted'); ctx.font = '11px "Zen Kaku Gothic New", system-ui, sans-serif';
+  if (xLabel) { ctx.textAlign = 'right'; ctx.fillText(xLabel, w - pad.r, h - 4); }
+  if (yLabel) { ctx.textAlign = 'left'; ctx.fillText(yLabel, pad.l + 4, pad.t + 10); }
+}
+function drawTacho(res) {
+  const { ctx, w, h } = setupCanvas($('#tacho'));
+  const B = res.beats; if (B.length < 2) return;
+  const pad = { l: 40, r: 8, t: 8, b: 22 };
+  const okv = B.filter(b => b.ok).map(b => b.ibi);
+  let lo = Math.min(...okv), hi = Math.max(...okv);
+  const m = (hi - lo) * 0.15 + 20; lo -= m; hi += m;
+  const tMax = B[B.length - 1].t;
+  const X = t => pad.l + t / tMax * (w - pad.l - pad.r);
+  const Y = v => h - pad.b - (Math.min(Math.max(v, lo), hi) - lo) / (hi - lo) * (h - pad.t - pad.b);
+  axes(ctx, w, h, pad, `${Math.round(tMax / 1000)} 秒`, '');
+  ctx.fillStyle = cssVar('--muted'); ctx.textAlign = 'right';
+  ctx.fillText(`${Math.round(hi)}`, pad.l - 6, pad.t + 10);
+  ctx.fillText(`${Math.round(lo)}`, pad.l - 6, h - pad.b);
+  ctx.save(); ctx.translate(10, h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText('ms', 0, 0); ctx.restore();
+  ctx.strokeStyle = cssVar('--blood'); ctx.lineWidth = 1.2; ctx.globalAlpha = 0.5; ctx.beginPath();
+  let first = true;
+  for (const b of B) { if (!b.ok) { first = true; continue; } const x = X(b.t), y = Y(b.ibi); if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y); }
+  ctx.stroke(); ctx.globalAlpha = 1;
+  for (const b of B) {
+    const x = X(b.t), y = Y(b.ibi);
+    ctx.beginPath(); ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+    if (b.ok) { ctx.fillStyle = cssVar('--blood'); ctx.fill(); }
+    else { ctx.strokeStyle = cssVar('--muted'); ctx.lineWidth = 1; ctx.stroke(); }
+  }
+}
+function drawPSD(res) {
+  const { ctx, w, h } = setupCanvas($('#psd'));
+  const P = res.metrics.psd; if (!P) return;
+  const pad = { l: 12, r: 8, t: 8, b: 22 };
+  const fMax = 0.5;
+  const X = f => pad.l + f / fMax * (w - pad.l - pad.r);
+  const pmax = Math.max(...P.psd) || 1;
+  const Y = p => h - pad.b - p / pmax * (h - pad.t - pad.b);
+  const band = (a, b, col) => { ctx.fillStyle = col; ctx.globalAlpha = 0.12; ctx.fillRect(X(a), pad.t, X(b) - X(a), h - pad.t - pad.b); ctx.globalAlpha = 1; };
+  if (res.metrics.lf != null) band(0.04, 0.15, cssVar('--amber'));
+  band(0.15, 0.4, cssVar('--vagal'));
+  axes(ctx, w, h, pad, '0.5 Hz', '');
+  ctx.fillStyle = cssVar('--muted'); ctx.textAlign = 'center';
+  if (res.metrics.lf != null) ctx.fillText('LF', X(0.095), pad.t + 12);
+  ctx.fillText('HF', X(0.275), pad.t + 12);
+  ctx.beginPath(); ctx.moveTo(X(P.freqs[0]), Y(0));
+  for (let k = 0; k < P.freqs.length; k++) ctx.lineTo(X(P.freqs[k]), Y(P.psd[k]));
+  ctx.lineTo(X(P.freqs[P.freqs.length - 1]), Y(0)); ctx.closePath();
+  ctx.fillStyle = cssVar('--ink'); ctx.globalAlpha = 0.12; ctx.fill(); ctx.globalAlpha = 1;
+  ctx.strokeStyle = cssVar('--ink'); ctx.lineWidth = 1.4; ctx.beginPath();
+  for (let k = 0; k < P.freqs.length; k++) { const x = X(P.freqs[k]), y = Y(P.psd[k]); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  ctx.stroke();
+}
+function drawPoin(res) {
+  const { ctx, w, h } = setupCanvas($('#poin'));
+  const B = res.beats, pts = [];
+  for (let i = 1; i < B.length; i++) if (B[i].ok && B[i - 1].ok) pts.push([B[i - 1].ibi, B[i].ibi]);
+  if (pts.length < 3) return;
+  const pad = { l: 36, r: 8, t: 8, b: 22 };
+  const all = pts.flat();
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const m = (hi - lo) * 0.15 + 20; lo -= m; hi += m;
+  const S2 = Math.min(w - pad.l - pad.r, h - pad.t - pad.b);
+  const X = v => pad.l + (v - lo) / (hi - lo) * S2, Y = v => pad.t + S2 - (v - lo) / (hi - lo) * S2;
+  ctx.strokeStyle = cssVar('--line'); ctx.lineWidth = 1;
+  ctx.strokeRect(pad.l, pad.t, S2, S2);
+  ctx.beginPath(); ctx.moveTo(X(lo), Y(lo)); ctx.lineTo(X(hi), Y(hi)); ctx.stroke();
+  ctx.fillStyle = cssVar('--muted'); ctx.font = '11px "Zen Kaku Gothic New", system-ui, sans-serif';
+  ctx.textAlign = 'left'; ctx.fillText(`${Math.round(lo)}`, pad.l, pad.t + S2 + 14);
+  ctx.textAlign = 'right'; ctx.fillText(`${Math.round(hi)} ms`, pad.l + S2, pad.t + S2 + 14);
+  ctx.fillStyle = cssVar('--vagal'); ctx.globalAlpha = 0.7;
+  for (const [a, b] of pts) { ctx.beginPath(); ctx.arc(X(a), Y(b), 2.2, 0, Math.PI * 2); ctx.fill(); }
+  ctx.globalAlpha = 1;
+}
+
+/* ================= history ================= */
+const HKEY = 'hikari-myaku.history.v1';
+function loadHistory() { try { return JSON.parse(localStorage.getItem(HKEY) || '[]'); } catch (e) { return []; } }
+function saveHistory(res) {
+  const m = res.metrics, q = quality(res);
+  const h = loadHistory();
+  h.push({ ts: Date.now(), dur: res.durSec, hr: m.hr, rmssd: m.rmssd, lnrmssd: m.lnrmssd, sdnn: m.sdnn, lfhf: m.lfhf ?? null, qok: q.ok, q: Math.round(q.ratio * 100) });
+  while (h.length > 200) h.shift();
+  try { localStorage.setItem(HKEY, JSON.stringify(h)); } catch (e) {}
+}
+function renderHistory() {
+  const h = loadHistory().slice().reverse();
+  const el = $('#hist');
+  $('#clearHist').hidden = !h.length;
+  if (!h.length) { el.innerHTML = '<p class="empty">まだ記録はありません。測るとここに並び、3回目から普段の値との比較が出ます。</p>'; return; }
+  const fmt = ts => new Date(ts).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  el.innerHTML = `<table class="hist"><thead><tr><th>日時</th><th>心拍</th><th>RMSSD</th><th>SDNN</th><th>LF/HF</th><th>採用率</th></tr></thead><tbody>` +
+    h.slice(0, 20).map(r => `<tr><td>${fmt(r.ts)}</td><td>${f0(r.hr)}</td><td>${f0(r.rmssd)}</td><td>${f0(r.sdnn)}</td><td>${r.lfhf != null ? f2(r.lfhf) : '—'}</td><td class="${r.qok ? '' : 'q-low'}">${r.q}%</td></tr>`).join('') +
+    `</tbody></table>`;
+}
+$('#clearHist').addEventListener('click', () => {
+  if (!confirm('この端末に保存した記録をすべて消します。よろしいですか？')) return;
+  try { localStorage.removeItem(HKEY); } catch (e) {}
+  renderHistory();
+});
+
+/* ================= downloads ================= */
+$('#csv').addEventListener('click', async () => {
+  const res = S.lastResult; if (!res || !canSave()) return;
+  const d = new Date();
+  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+  const m = res.metrics;
+  const lines = [
+    `# hikari-myaku ${d.toISOString()}`,
+    `# duration_s=${res.durSec} fps=${res.fsRaw.toFixed(1)} channel=${res.channel === '緑' ? 'green' : 'red'}`,
+    `# hr=${f1(m.hr)} rmssd=${f1(m.rmssd)} sdnn=${f1(m.sdnn)} pnn50=${f1(m.pnn50)} lfhf=${m.lfhf != null ? f2(m.lfhf) : ''}`,
+    'beat_time_ms,ibi_ms,accepted'
+  ].concat(res.beats.map(b => `${b.t.toFixed(1)},${b.ibi.toFixed(1)},${b.ok ? 1 : 0}`));
+  try { await saveFile(`hikari-myaku-${stamp}.csv`, lines.join('\n') + '\n', 'text/csv'); } catch (e) {}
+});
+$('#selfSave').addEventListener('click', async () => {
+  if (!downloads) return;
+  try { await downloads.save({ filename: 'hikari-myaku.html', data: SELF_HTML }); } catch (e) {}
+});
+
+renderHistory();
+drawWave(0);
+if (window.claude && typeof window.claude.use === 'function') {
+  window.claude.use('downloads').then(d => { downloads = d; if (S.lastResult) $('#csv').hidden = !d; }).catch(() => {});
+}
+window.addEventListener('resize', () => { if (S.lastResult && !$('#results').hidden) { drawTacho(S.lastResult); drawPSD(S.lastResult); drawPoin(S.lastResult); } });
+})();
+</script>
+</body>
+</html>
